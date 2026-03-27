@@ -1,5 +1,43 @@
+.DEFAULT_GOAL := help
+
 PROTO_VERSION := v0.1.0
 PROTO_BASE_URL := https://raw.githubusercontent.com/mozilla-ai/cq-proto/$(PROTO_VERSION)
+
+.PHONY: help
+help:
+	@echo "cq-sdk — Python SDK for the shared agent knowledge commons"
+	@echo ""
+	@echo "Development:"
+	@echo "  make setup          Install all dependencies"
+	@echo "  make test           Run all tests"
+	@echo "  make lint           Run pre-commit hooks (format, lint, detect-secrets)"
+	@echo "  make format         Auto-format Python files"
+	@echo "  make format-check   Check formatting without modifying files"
+	@echo "  make clean          Remove fetched protos and build artifacts"
+	@echo ""
+	@echo "Proto codegen:"
+	@echo "  make fetch-protos   Download proto definitions from cq-proto"
+	@echo "  make generate       Generate _pb2 stubs from fetched protos"
+
+.PHONY: setup
+setup:
+	uv sync --group dev
+
+.PHONY: test
+test:
+	uv run pytest -x -q
+
+.PHONY: lint
+lint:
+	uv run pre-commit run --all-files
+
+.PHONY: format
+format:
+	uv run ruff format .
+
+.PHONY: format-check
+format-check:
+	uv run ruff format --check .
 
 .PHONY: fetch-protos
 fetch-protos:
@@ -22,15 +60,3 @@ clean:
 	rm -rf tmp/
 	rm -rf build/ dist/ *.egg-info src/*.egg-info
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
-
-.PHONY: install
-install:
-	uv sync --group dev
-
-.PHONY: test
-test:
-	uv run pytest -x -q
-
-.PHONY: lint
-lint:
-	uv run pre-commit run --all-files
