@@ -37,6 +37,9 @@ ku = cq.propose(
 # Confirm / flag.
 cq.confirm(ku.id)
 cq.flag(ku.id, reason=FlagReason.STALE)
+
+# Get the canonical agent protocol prompt.
+prompt = cq.prompt()
 ```
 
 ## Configuration
@@ -52,7 +55,7 @@ The client reads configuration from environment variables:
 Or pass directly:
 
 ```python
-cq = cq_client(
+cq = Client(
     addr="http://localhost:8742",
     local_db_path=Path("~/.local/share/cq/local.db").expanduser(),
 )

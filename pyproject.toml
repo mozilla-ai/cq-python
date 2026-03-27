@@ -43,6 +43,7 @@ namespaces = false
 
 [tool.setuptools.package-data]
 "*" = ["py.typed"]
+"cq.protocol" = ["skill.md"]
 
 [tool.setuptools_scm]
 
