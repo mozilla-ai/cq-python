@@ -186,6 +186,7 @@ class TestRemoteIntegration:
             },
             "tier": "TIER_PRIVATE",
         }
+        httpx_mock.add_response(json={}, status_code=200)  # Accept /propose.
         httpx_mock.add_response(
             url=httpx.URL("http://test-remote/query", params={"domain": ["api"], "limit": "5"}),
             json=[remote_unit],
@@ -245,13 +246,16 @@ def httpx_mock():
 
     def patched_send(self, request, **kwargs):
         if exceptions:
-            raise exceptions[0]
-        for resp_config in responses:
-            return httpx.Response(
-                status_code=resp_config["status_code"],
-                json=resp_config["json"],
-                request=request,
-            )
+            raise exceptions.pop(0)
+        for idx, resp_config in enumerate(responses):
+            expected_url = resp_config["url"]
+            if expected_url is None or request.url == expected_url:
+                responses.pop(idx)
+                return httpx.Response(
+                    status_code=resp_config["status_code"],
+                    json=resp_config["json"],
+                    request=request,
+                )
         return httpx.Response(status_code=404, request=request)
 
     with patch.object(httpx.Client, "send", patched_send):

@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 
 import httpx
+from pydantic import ValidationError
 
 from .models import (
     Context,
@@ -136,11 +137,10 @@ class Client:
             context=context,
             created_by=created_by,
         )
-        self._store.insert(unit)
-
         if self._http is not None:
             self._remote_propose(unit)
 
+        self._store.insert(unit)
         return unit
 
     def confirm(self, unit_id: str) -> KnowledgeUnit:
@@ -200,8 +200,8 @@ class Client:
         for unit in units:
             if unit.tier == Tier.LOCAL:
                 try:
-                    self._remote_propose(unit)
-                    pushed += 1
+                    if self._remote_propose(unit):
+                        pushed += 1
                 except (httpx.HTTPError, RemoteError):
                     logger.warning("Failed to drain unit %s", unit.id, exc_info=True)
         return pushed
@@ -230,12 +230,19 @@ class Client:
             resp = self._http.get("/query", params=params)
             resp.raise_for_status()
             return [KnowledgeUnit.model_validate(item) for item in resp.json()]
-        except (httpx.HTTPError, ValueError):
+        except (httpx.HTTPError, ValueError, ValidationError):
             logger.warning("Remote query failed", exc_info=True)
             return []
 
-    def _remote_propose(self, unit: KnowledgeUnit) -> None:
-        """Push a unit to the remote API. Raises on explicit rejection."""
+    def _remote_propose(self, unit: KnowledgeUnit) -> bool:
+        """Push a unit to the remote API.
+
+        Returns:
+            True if the remote accepted the unit, False on transport error.
+
+        Raises:
+            RemoteError: If the remote API explicitly rejects the request.
+        """
         assert self._http is not None
         body = {
             "domain": unit.domain,
@@ -246,6 +253,7 @@ class Client:
         try:
             resp = self._http.post("/propose", json=body)
             resp.raise_for_status()
+            return True
         except httpx.HTTPStatusError as exc:
             raise RemoteError(
                 status_code=exc.response.status_code,
@@ -253,6 +261,7 @@ class Client:
             ) from exc
         except httpx.HTTPError:
             logger.debug("Remote propose unreachable", exc_info=True)
+            return False
 
     def _remote_confirm(self, unit_id: str) -> None:
         """Confirm a unit on the remote API."""
@@ -280,7 +289,7 @@ def _db_path_from_env() -> Path | None:
     """Read local DB path from environment, or return None for default."""
     env_path = os.environ.get("CQ_LOCAL_DB_PATH")
     if env_path:
-        return Path(env_path)
+        return Path(env_path).expanduser().resolve()
     return None
 
 

@@ -131,6 +131,7 @@ def _normalize_domains(domains: list[str]) -> list[str]:
 
 
 _FTS_MAX_TERMS = 20
+_MAX_QUERY_DOMAINS = 50
 _FTS_MAX_TERM_LENGTH = 200
 
 
@@ -450,6 +451,13 @@ class LocalStore:
         normalized = _normalize_domains(domains)
         if not normalized:
             return []
+        if len(normalized) > _MAX_QUERY_DOMAINS:
+            logger.warning(
+                "Query domain count (%d) exceeds limit (%d); truncating.",
+                len(normalized),
+                _MAX_QUERY_DOMAINS,
+            )
+            normalized = normalized[:_MAX_QUERY_DOMAINS]
 
         # Safe: placeholders is only '?' characters, never user input.
         placeholders = ",".join("?" for _ in normalized)
