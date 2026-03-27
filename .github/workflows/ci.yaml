@@ -20,6 +20,12 @@ jobs:
         with:
           enable-cache: true
 
+      - name: Fetch skill prompt
+        run: make fetch-skill
+
+      - name: Check required artifacts
+        run: test -f src/cq/protocol/skill.md || { echo "Missing skill.md — run make fetch-skill"; exit 1; }
+
       - name: Lint
         run: |
           uv sync --group dev
