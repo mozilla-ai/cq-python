@@ -436,8 +436,10 @@ class LocalStore:
     ) -> list[KnowledgeUnit]:
         """Search for knowledge units by domain tags with relevance ranking.
 
-        Finds units with at least one overlapping domain tag, optionally
-        boosted by language or framework context, then ranks results by
+        Retrieves units whose domain tags overlap with the query, then
+        adds additional candidates from the FTS5 full-text index (these
+        may have no domain overlap). All candidates are scored, optionally
+        boosted by language or framework context, and ranked by
         relevance * confidence.
 
         Raises:

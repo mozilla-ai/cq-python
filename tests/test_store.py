@@ -1,5 +1,6 @@
 """Tests for local SQLite knowledge store."""
 
+import json
 import sqlite3
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
@@ -1015,6 +1016,91 @@ class TestCrossLanguageFixtures:
         assert '"team"' not in reserialized
         assert '"local"' not in reserialized
         assert '"global"' not in reserialized
+
+
+class TestGoCompatibility:
+    """Verify Python serialization is structurally compatible with Go.
+
+    The Go SDK reads and writes the same SQLite database. These tests
+    ensure that Go-written data survives a Python round-trip without
+    losing fields, and that Python-written data has the same JSON
+    structure Go expects.
+    """
+
+    def test_go_fixture_preserves_created_by(self) -> None:
+        data = (_FIXTURES_DIR / "go_unit.json").read_text()
+        unit = KnowledgeUnit.model_validate_json(data)
+        assert unit.created_by == "agent-go"
+
+    def test_go_fixture_preserves_timestamps(self) -> None:
+        data = (_FIXTURES_DIR / "go_unit.json").read_text()
+        unit = KnowledgeUnit.model_validate_json(data)
+        assert unit.evidence.first_observed is not None
+        assert unit.evidence.last_confirmed is not None
+        assert "2026-03-25" in unit.evidence.first_observed.isoformat()
+
+    def test_go_fixture_preserves_context(self) -> None:
+        data = (_FIXTURES_DIR / "go_unit.json").read_text()
+        unit = KnowledgeUnit.model_validate_json(data)
+        assert unit.context.languages == ["go"]
+        assert unit.context.frameworks == ["grpc"]
+
+    def test_go_fixture_roundtrip_no_data_loss(self) -> None:
+        """Go data round-tripped through Python must not lose fields."""
+        data = (_FIXTURES_DIR / "go_unit.json").read_text()
+        original = json.loads(data)
+        unit = KnowledgeUnit.model_validate_json(data)
+        reserialized = json.loads(unit.model_dump_json())
+        # All Go fields must survive the round-trip.
+        assert reserialized["id"] == original["id"]
+        assert reserialized["created_by"] == original["created_by"]
+        assert reserialized["tier"] == original["tier"]
+        assert reserialized["evidence"]["confidence"] == original["evidence"]["confidence"]
+        assert reserialized["evidence"]["confirmations"] == original["evidence"]["confirmations"]
+        assert reserialized["insight"] == original["insight"]
+        assert reserialized["domain"] == original["domain"]
+        # Context may gain default fields (e.g. pattern="") on round-trip.
+        for key in original["context"]:
+            assert reserialized["context"][key] == original["context"][key]
+
+    def test_go_flagged_fixture_preserves_flags(self) -> None:
+        data = (_FIXTURES_DIR / "go_flagged_unit.json").read_text()
+        unit = KnowledgeUnit.model_validate_json(data)
+        assert len(unit.flags) == 1
+        assert unit.flags[0].reason == FlagReason.DUPLICATE
+
+    def test_python_output_has_all_go_expected_fields(self) -> None:
+        """Python-serialized JSON must contain every field Go reads."""
+        unit = _make_unit(
+            domain=["api"],
+            context=Context(languages=["python"], frameworks=["django"]),
+            created_by="agent-python",
+        )
+        data = json.loads(unit.model_dump_json())
+        go_expected_fields = [
+            "id",
+            "version",
+            "domain",
+            "insight",
+            "context",
+            "evidence",
+            "tier",
+            "created_by",
+            "superseded_by",
+            "flags",
+        ]
+        for field in go_expected_fields:
+            assert field in data, f"missing field Go expects: {field}"
+
+    def test_python_output_uses_proto_enum_values(self) -> None:
+        """Python JSON must use the same enum strings as Go protojson."""
+        unit = _make_unit()
+        data = json.loads(unit.model_dump_json())
+        assert data["tier"] == "TIER_LOCAL"
+
+        flagged = apply_flag(unit, FlagReason.STALE)
+        data = json.loads(flagged.model_dump_json())
+        assert data["flags"][0]["reason"] == "FLAG_REASON_STALE"
 
 
 class TestSchemaMigration:

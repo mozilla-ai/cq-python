@@ -5,6 +5,7 @@ include = ["*.py", "*.pyi"]
 fix = true
 
 exclude = [
+    "src/cq/cqpb/",
     ".bzr",
     ".direnv",
     ".eggs",

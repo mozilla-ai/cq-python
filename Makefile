@@ -60,11 +60,15 @@ fetch-protos:
 
 .PHONY: generate
 generate:
-	mkdir -p src/cq/cqpb
+	rm -rf tmp/gen
+	mkdir -p tmp/gen src/cq/cqpb
 	uv run python -m grpc_tools.protoc --proto_path=tmp \
-		--python_out=src/cq/cqpb \
-		--pyi_out=src/cq/cqpb \
+		--python_out=tmp/gen \
+		--pyi_out=tmp/gen \
 		tmp/cq/v1/*.proto
+	cp tmp/gen/cq/v1/*_pb2.py tmp/gen/cq/v1/*_pb2.pyi src/cq/cqpb/
+	touch src/cq/cqpb/__init__.py
+	rm -rf tmp/gen
 
 .PHONY: clean
 clean:
