@@ -52,9 +52,9 @@ The client reads configuration from environment variables:
 Or pass directly:
 
 ```python
-cq = Client(
+cq = cq_client(
     addr="http://localhost:8742",
-    local_db_path=Path("~/.local/share/cq/local.db"),
+    local_db_path=Path("~/.local/share/cq/local.db").expanduser(),
 )
 ```
 

@@ -82,7 +82,7 @@ Use descriptive branch names with one of these prefixes:
 - Write tests for every change. Bug fixes should include a test that reproduces the issue.
 - Write clear commit messages that explain *why* the change was made, not just *what* changed.
 - Keep commits atomic; each commit should represent one logical change.
--
+
 ## Submitting Your Contribution
 
 1. Fork the repository and clone your fork.
