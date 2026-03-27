@@ -6,7 +6,7 @@ This project is in early development. Please report vulnerabilities against the 
 
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability in cq, please report it responsibly by emailing **security@mozilla.ai**. 
+If you discover a security vulnerability in cq, please report it responsibly by emailing **security@mozilla.ai**.
 
 Do **not** open a public GitHub issue for security vulnerabilities.
 
