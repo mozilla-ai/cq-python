@@ -1,0 +1,51 @@
+[project]
+name = "cq-sdk"
+dynamic = ["version"]
+description = "Python SDK for cq — shared agent knowledge commons"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+dependencies = [
+    "httpx>=0.28.1",
+    "protobuf>=6.33.6",
+    "pydantic>=2.12.5",
+]
+
+[dependency-groups]
+dev = [
+    { include-group = "codegen" },
+    { include-group = "lint" },
+    { include-group = "tests" },
+]
+
+lint = [
+    "pre-commit>=4.5.1",
+    "ruff>=0.15.8",
+]
+
+tests = [
+    "pytest>=9.0.2",
+    "setuptools>=80",
+    "setuptools-scm[toml]>=8.3",
+]
+
+codegen = [
+    "grpcio-tools>=1.78.0",
+]
+
+[build-system]
+requires = ["setuptools>=48", "setuptools_scm[toml]>=6.3.1"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+exclude = ["tests", "tests.*"]
+where = ["src"]
+namespaces = false
+
+[tool.setuptools.package-data]
+"*" = ["py.typed"]
+"cq.protocol" = ["skill.md"]
+
+[tool.setuptools_scm]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
