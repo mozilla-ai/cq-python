@@ -61,7 +61,7 @@ Thank you for your interest in contributing to cq. This guide explains how to ge
 
 - **Search for duplicates.** Check [existing issues](https://github.com/mozilla-ai/cq-python/issues) and [open pull requests](https://github.com/mozilla-ai/cq-python/pulls) before starting work.
 - **Discuss major changes first.** Open an issue before starting work on: new features, API changes, architectural changes, breaking changes, or new dependencies. This avoids wasted effort and helps maintainers provide early guidance.
-- **Set up your development environment.** See the [README](README.md) for prerequisites, installation, and how to run tests and linters.
+- **Set up your development environment.** See [DEVELOPMENT.md](DEVELOPMENT.md) for prerequisites, installation, and how to run tests and linters.
 
 ## Making Changes
 
