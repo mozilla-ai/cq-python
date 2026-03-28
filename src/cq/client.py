@@ -124,7 +124,9 @@ class Client:
     ) -> KnowledgeUnit:
         """Propose a new knowledge unit.
 
-        Stores locally and pushes to the remote API if configured.
+        When a remote API is configured, sends to remote only. Falls back
+        to local storage when the remote is unreachable. Raises RemoteError
+        if the remote explicitly rejects the unit.
         """
         context = Context(
             languages=[language] if language else [],
@@ -138,7 +140,10 @@ class Client:
             created_by=created_by,
         )
         if self._http is not None:
-            self._remote_propose(unit)
+            if self._remote_propose(unit):
+                return unit
+            # Remote unreachable — fall back to local storage.
+            logger.info("Remote unreachable; storing unit %s locally as fallback.", unit.id)
 
         self._store.insert(unit)
         return unit
@@ -208,6 +213,7 @@ class Client:
             if unit.tier == Tier.LOCAL:
                 try:
                     if self._remote_propose(unit):
+                        self._store.delete(unit.id)
                         pushed += 1
                 except (httpx.HTTPError, RemoteError):
                     logger.warning("Failed to drain unit %s", unit.id, exc_info=True)
