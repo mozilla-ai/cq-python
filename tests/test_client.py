@@ -7,7 +7,7 @@ from unittest.mock import patch
 import httpx
 import pytest
 
-from cq.client import Client
+from cq.client import Client, RemoteError
 from cq.models import FlagReason
 
 
@@ -186,27 +186,93 @@ class TestRemoteIntegration:
             },
             "tier": "TIER_PRIVATE",
         }
-        httpx_mock.add_response(json={}, status_code=200)  # Accept /propose.
         httpx_mock.add_response(
             url=httpx.URL("http://test-remote/query", params={"domain": ["api"], "limit": "5"}),
             json=[remote_unit],
         )
 
-        c = Client(
-            addr="http://test-remote",
-            local_db_path=tmp_path / "test.db",
-        )
-        c.propose(
+        # Insert a local unit directly (propose with remote skips local store).
+        local_client = Client(local_db_path=tmp_path / "test.db")
+        local_client.propose(
             summary="Local insight",
             detail="D",
             action="A",
             domains=["api"],
         )
+        local_client.close()
 
+        c = Client(
+            addr="http://test-remote",
+            local_db_path=tmp_path / "test.db",
+        )
         results = c.query(["api"])
         assert len(results) == 2
         ids = {r.id for r in results}
         assert "ku_remote123" in ids
+        c.close()
+
+    def test_propose_skips_local_when_remote_accepts(self, tmp_path: Path, httpx_mock):
+        """When remote accepts the unit, nothing is stored locally."""
+        httpx_mock.add_response(json={}, status_code=200)
+
+        c = Client(addr="http://test-remote", local_db_path=tmp_path / "test.db")
+        c.propose(summary="Remote only", detail="D", action="A", domains=["api"])
+
+        assert c._store.all() == []
+        c.close()
+
+    def test_propose_falls_back_to_local_when_remote_unreachable(self, tmp_path: Path, httpx_mock):
+        """When remote is unreachable, the unit is stored locally as fallback."""
+        httpx_mock.add_exception(httpx.ConnectError("Connection refused"))
+
+        c = Client(addr="http://unreachable", local_db_path=tmp_path / "test.db")
+        c.propose(summary="Local fallback", detail="D", action="A", domains=["api"])
+
+        units = c._store.all()
+        assert len(units) == 1
+        assert units[0].insight.summary == "Local fallback"
+        c.close()
+
+    def test_propose_raises_when_remote_rejects(self, tmp_path: Path, httpx_mock):
+        """When remote explicitly rejects, raise RemoteError and skip local."""
+        httpx_mock.add_response(json={"detail": "bad request"}, status_code=400)
+
+        c = Client(addr="http://test-remote", local_db_path=tmp_path / "test.db")
+        with pytest.raises(RemoteError):
+            c.propose(summary="Rejected", detail="D", action="A", domains=["api"])
+
+        assert c._store.all() == []
+        c.close()
+
+    def test_drain_deletes_local_units_after_push(self, tmp_path: Path, httpx_mock):
+        """After drain pushes a unit to remote, it is deleted from local store."""
+        # First, create a local-only client and propose a unit.
+        c = Client(local_db_path=tmp_path / "test.db")
+        c.propose(summary="To drain", detail="D", action="A", domains=["api"])
+        assert len(c._store.all()) == 1
+        c.close()
+
+        # Now open with remote configured; mock accepts the push.
+        httpx_mock.add_response(json={}, status_code=200)
+        c = Client(addr="http://test-remote", local_db_path=tmp_path / "test.db")
+        pushed = c.drain()
+
+        assert pushed == 1
+        assert c._store.all() == []
+        c.close()
+
+    def test_drain_keeps_local_unit_on_push_failure(self, tmp_path: Path, httpx_mock):
+        """If drain fails to push a unit, it remains in local store."""
+        c = Client(local_db_path=tmp_path / "test.db")
+        c.propose(summary="Stuck locally", detail="D", action="A", domains=["api"])
+        c.close()
+
+        httpx_mock.add_exception(httpx.ConnectError("Connection refused"))
+        c = Client(addr="http://unreachable", local_db_path=tmp_path / "test.db")
+        pushed = c.drain()
+
+        assert pushed == 0
+        assert len(c._store.all()) == 1
         c.close()
 
     def test_remote_failure_falls_back_to_local(self, tmp_path: Path, httpx_mock):
