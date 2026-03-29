@@ -156,8 +156,10 @@ class Client:
         - Non-local (PRIVATE, PUBLIC): routes directly to the remote API.
 
         Raises:
-            KeyError: If the unit cannot be found.
-            RemoteError: If the remote API explicitly rejects the request.
+            KeyError: If the unit is not found in the local store (LOCAL tier)
+                or if the remote is unreachable (non-local tiers).
+            RemoteError: If the remote API explicitly rejects the request,
+                including HTTP 404/410.
             RuntimeError: If a non-local tier is specified without a remote API.
         """
         if tier == Tier.LOCAL:
@@ -178,7 +180,7 @@ class Client:
         result = self._remote_confirm(unit_id)
         if result is not None:
             return result
-        raise KeyError(f"Knowledge unit not found on remote: {unit_id}")
+        raise KeyError(f"Remote unreachable; cannot confirm unit: {unit_id}")
 
     def flag(self, unit_id: str, reason: FlagReason, *, tier: Tier = Tier.LOCAL) -> KnowledgeUnit:
         """Flag a knowledge unit, reducing its confidence.
@@ -188,8 +190,10 @@ class Client:
         - Non-local (PRIVATE, PUBLIC): routes directly to the remote API.
 
         Raises:
-            KeyError: If the unit cannot be found.
-            RemoteError: If the remote API explicitly rejects the request.
+            KeyError: If the unit is not found in the local store (LOCAL tier)
+                or if the remote is unreachable (non-local tiers).
+            RemoteError: If the remote API explicitly rejects the request,
+                including HTTP 404/410.
             RuntimeError: If a non-local tier is specified without a remote API.
         """
         if tier == Tier.LOCAL:
@@ -210,7 +214,7 @@ class Client:
         result = self._remote_flag(unit_id, reason)
         if result is not None:
             return result
-        raise KeyError(f"Knowledge unit not found on remote: {unit_id}")
+        raise KeyError(f"Remote unreachable; cannot flag unit: {unit_id}")
 
     def status(self) -> StoreStats:
         """Return local store statistics."""

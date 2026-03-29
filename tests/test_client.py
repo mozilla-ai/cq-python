@@ -370,7 +370,7 @@ class TestRemoteIntegration:
         httpx_mock.add_exception(httpx.ConnectError("Connection refused"))
 
         c = Client(addr="http://unreachable", local_db_path=tmp_path / "test.db")
-        with pytest.raises(KeyError, match="ku_remote123"):
+        with pytest.raises(KeyError, match="Remote unreachable"):
             c.confirm("ku_remote123", tier=Tier.PRIVATE)
         c.close()
 
@@ -379,7 +379,7 @@ class TestRemoteIntegration:
         httpx_mock.add_exception(httpx.ConnectError("Connection refused"))
 
         c = Client(addr="http://unreachable", local_db_path=tmp_path / "test.db")
-        with pytest.raises(KeyError, match="ku_remote123"):
+        with pytest.raises(KeyError, match="Remote unreachable"):
             c.flag("ku_remote123", FlagReason.STALE, tier=Tier.PRIVATE)
         c.close()
 
