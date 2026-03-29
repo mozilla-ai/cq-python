@@ -8,7 +8,7 @@ import httpx
 import pytest
 
 from cq.client import Client, RemoteError
-from cq.models import FlagReason
+from cq.models import FlagReason, Tier
 
 
 @pytest.fixture()
@@ -102,6 +102,14 @@ class TestLocalOnlyMode:
         )
         assert ku.context.languages == ["python"]
         assert ku.context.frameworks == ["django"]
+
+    def test_confirm_non_local_without_remote_raises(self, client: Client):
+        with pytest.raises(RuntimeError, match="remote API"):
+            client.confirm("ku_nonexistent", tier=Tier.PRIVATE)
+
+    def test_flag_non_local_without_remote_raises(self, client: Client):
+        with pytest.raises(RuntimeError, match="remote API"):
+            client.flag("ku_nonexistent", FlagReason.STALE, tier=Tier.PRIVATE)
 
     def test_query_language_boosts_ranking(self, client: Client):
         client.propose(
@@ -292,6 +300,107 @@ class TestRemoteIntegration:
 
         results = c.query(["api"])
         assert len(results) == 1
+        c.close()
+
+    def test_confirm_routes_to_remote_for_non_local_tier(self, tmp_path: Path, httpx_mock):
+        """confirm() routes to remote API when tier is non-local."""
+        confirmed_unit = {
+            "id": "ku_remote123",
+            "domain": ["api"],
+            "insight": {"summary": "S", "detail": "D", "action": "A"},
+            "evidence": {"confidence": 0.6, "confirmations": 2},
+            "tier": "TIER_PRIVATE",
+        }
+        httpx_mock.add_response(json={"knowledge_unit": confirmed_unit}, status_code=200)
+
+        c = Client(addr="http://test-remote", local_db_path=tmp_path / "test.db")
+        result = c.confirm("ku_remote123", tier=Tier.PRIVATE)
+        assert result.id == "ku_remote123"
+        assert result.evidence.confidence == pytest.approx(0.6)
+        assert result.tier == Tier.PRIVATE
+        c.close()
+
+    def test_flag_routes_to_remote_for_non_local_tier(self, tmp_path: Path, httpx_mock):
+        """flag() routes to remote API when tier is non-local."""
+        flagged_unit = {
+            "id": "ku_remote123",
+            "domain": ["api"],
+            "insight": {"summary": "S", "detail": "D", "action": "A"},
+            "evidence": {"confidence": 0.35},
+            "flags": [{"reason": "FLAG_REASON_STALE"}],
+            "tier": "TIER_PRIVATE",
+        }
+        httpx_mock.add_response(json={"knowledge_unit": flagged_unit}, status_code=200)
+
+        c = Client(addr="http://test-remote", local_db_path=tmp_path / "test.db")
+        result = c.flag("ku_remote123", FlagReason.STALE, tier=Tier.PRIVATE)
+        assert result.id == "ku_remote123"
+        assert result.evidence.confidence == pytest.approx(0.35)
+        assert len(result.flags) == 1
+        c.close()
+
+    def test_confirm_raises_remote_error_for_rejected_non_local(self, tmp_path: Path, httpx_mock):
+        """confirm() raises RemoteError when remote rejects a non-local unit."""
+        httpx_mock.add_response(json={"detail": "not found"}, status_code=404)
+
+        c = Client(addr="http://test-remote", local_db_path=tmp_path / "test.db")
+        with pytest.raises(RemoteError):
+            c.confirm("ku_remote123", tier=Tier.PRIVATE)
+        c.close()
+
+    def test_flag_raises_remote_error_for_rejected_non_local(self, tmp_path: Path, httpx_mock):
+        """flag() raises RemoteError when remote rejects a non-local unit."""
+        httpx_mock.add_response(json={"detail": "not found"}, status_code=404)
+
+        c = Client(addr="http://test-remote", local_db_path=tmp_path / "test.db")
+        with pytest.raises(RemoteError):
+            c.flag("ku_remote123", FlagReason.STALE, tier=Tier.PRIVATE)
+        c.close()
+
+    def test_confirm_raises_key_error_when_remote_unreachable_for_non_local(self, tmp_path: Path, httpx_mock):
+        """confirm() raises KeyError when remote is unreachable for non-local unit."""
+        httpx_mock.add_exception(httpx.ConnectError("Connection refused"))
+
+        c = Client(addr="http://unreachable", local_db_path=tmp_path / "test.db")
+        with pytest.raises(KeyError, match="ku_remote123"):
+            c.confirm("ku_remote123", tier=Tier.PRIVATE)
+        c.close()
+
+    def test_flag_raises_key_error_when_remote_unreachable_for_non_local(self, tmp_path: Path, httpx_mock):
+        """flag() raises KeyError when remote is unreachable for non-local unit."""
+        httpx_mock.add_exception(httpx.ConnectError("Connection refused"))
+
+        c = Client(addr="http://unreachable", local_db_path=tmp_path / "test.db")
+        with pytest.raises(KeyError, match="ku_remote123"):
+            c.flag("ku_remote123", FlagReason.STALE, tier=Tier.PRIVATE)
+        c.close()
+
+    def test_confirm_local_ignores_remote_rejection(self, tmp_path: Path, httpx_mock):
+        """confirm() succeeds locally even when remote rejects."""
+        from cq.models import Insight, create_knowledge_unit
+
+        httpx_mock.add_response(json={"detail": "rejected"}, status_code=400)
+
+        c = Client(addr="http://test-remote", local_db_path=tmp_path / "test.db")
+        unit = create_knowledge_unit(domain=["api"], insight=Insight(summary="S", detail="D", action="A"))
+        c._store.insert(unit)
+
+        confirmed = c.confirm(unit.id)
+        assert confirmed.evidence.confidence == pytest.approx(0.6)
+        c.close()
+
+    def test_flag_local_ignores_remote_rejection(self, tmp_path: Path, httpx_mock):
+        """flag() succeeds locally even when remote rejects."""
+        from cq.models import Insight, create_knowledge_unit
+
+        httpx_mock.add_response(json={"detail": "rejected"}, status_code=400)
+
+        c = Client(addr="http://test-remote", local_db_path=tmp_path / "test.db")
+        unit = create_knowledge_unit(domain=["api"], insight=Insight(summary="S", detail="D", action="A"))
+        c._store.insert(unit)
+
+        flagged = c.flag(unit.id, FlagReason.STALE)
+        assert flagged.evidence.confidence == pytest.approx(0.35)
         c.close()
 
 

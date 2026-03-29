@@ -148,41 +148,69 @@ class Client:
         self._store.insert(unit)
         return unit
 
-    def confirm(self, unit_id: str) -> KnowledgeUnit:
+    def confirm(self, unit_id: str, *, tier: Tier = Tier.LOCAL) -> KnowledgeUnit:
         """Confirm a knowledge unit, boosting its confidence.
 
+        Uses tier to determine where to route the confirmation:
+        - LOCAL: operates on local store, forwards to remote if configured.
+        - Non-local (PRIVATE, PUBLIC): routes directly to the remote API.
+
         Raises:
-            KeyError: If the unit is not found locally.
+            KeyError: If the unit cannot be found.
+            RemoteError: If the remote API explicitly rejects the request.
+            RuntimeError: If a non-local tier is specified without a remote API.
         """
-        unit = self._store.get(unit_id)
-        if unit is None:
-            raise KeyError(f"Knowledge unit not found: {unit_id}")
+        if tier == Tier.LOCAL:
+            unit = self._store.get(unit_id)
+            if unit is None:
+                raise KeyError(f"Knowledge unit not found: {unit_id}")
+            confirmed = apply_confirmation(unit)
+            self._store.update(confirmed)
+            if self._http is not None:
+                try:
+                    self._remote_confirm(unit_id)
+                except RemoteError:
+                    logger.debug("Remote rejected confirm for local unit %s", unit_id)
+            return confirmed
 
-        confirmed = apply_confirmation(unit)
-        self._store.update(confirmed)
+        if self._http is None:
+            raise RuntimeError("Cannot confirm non-local unit without remote API configured")
+        result = self._remote_confirm(unit_id)
+        if result is not None:
+            return result
+        raise KeyError(f"Knowledge unit not found on remote: {unit_id}")
 
-        if self._http is not None:
-            self._remote_confirm(unit_id)
-
-        return confirmed
-
-    def flag(self, unit_id: str, reason: FlagReason) -> KnowledgeUnit:
+    def flag(self, unit_id: str, reason: FlagReason, *, tier: Tier = Tier.LOCAL) -> KnowledgeUnit:
         """Flag a knowledge unit, reducing its confidence.
 
+        Uses tier to determine where to route the flag:
+        - LOCAL: operates on local store, forwards to remote if configured.
+        - Non-local (PRIVATE, PUBLIC): routes directly to the remote API.
+
         Raises:
-            KeyError: If the unit is not found locally.
+            KeyError: If the unit cannot be found.
+            RemoteError: If the remote API explicitly rejects the request.
+            RuntimeError: If a non-local tier is specified without a remote API.
         """
-        unit = self._store.get(unit_id)
-        if unit is None:
-            raise KeyError(f"Knowledge unit not found: {unit_id}")
+        if tier == Tier.LOCAL:
+            unit = self._store.get(unit_id)
+            if unit is None:
+                raise KeyError(f"Knowledge unit not found: {unit_id}")
+            flagged = apply_flag(unit, reason)
+            self._store.update(flagged)
+            if self._http is not None:
+                try:
+                    self._remote_flag(unit_id, reason)
+                except RemoteError:
+                    logger.debug("Remote rejected flag for local unit %s", unit_id)
+            return flagged
 
-        flagged = apply_flag(unit, reason)
-        self._store.update(flagged)
-
-        if self._http is not None:
-            self._remote_flag(unit_id, reason)
-
-        return flagged
+        if self._http is None:
+            raise RuntimeError("Cannot flag non-local unit without remote API configured")
+        result = self._remote_flag(unit_id, reason)
+        if result is not None:
+            return result
+        raise KeyError(f"Knowledge unit not found on remote: {unit_id}")
 
     def status(self) -> StoreStats:
         """Return local store statistics."""
@@ -276,17 +304,40 @@ class Client:
             logger.debug("Remote propose unreachable", exc_info=True)
             return False
 
-    def _remote_confirm(self, unit_id: str) -> None:
-        """Confirm a unit on the remote API."""
+    def _remote_confirm(self, unit_id: str) -> KnowledgeUnit | None:
+        """Confirm a unit on the remote API.
+
+        Returns:
+            The confirmed KnowledgeUnit on success, None on transport error.
+
+        Raises:
+            RemoteError: If the remote API explicitly rejects the request.
+        """
         assert self._http is not None
         try:
             resp = self._http.post(f"/confirm/{unit_id}")
             resp.raise_for_status()
-        except httpx.HTTPError:
+            data = resp.json()
+            unit_data = data.get("knowledge_unit", data) if isinstance(data, dict) else data
+            return KnowledgeUnit.model_validate(unit_data)
+        except httpx.HTTPStatusError as exc:
+            raise RemoteError(
+                status_code=exc.response.status_code,
+                detail=exc.response.text,
+            ) from exc
+        except (httpx.HTTPError, ValueError, ValidationError):
             logger.debug("Remote confirm failed", exc_info=True)
+            return None
 
-    def _remote_flag(self, unit_id: str, reason: FlagReason) -> None:
-        """Flag a unit on the remote API."""
+    def _remote_flag(self, unit_id: str, reason: FlagReason) -> KnowledgeUnit | None:
+        """Flag a unit on the remote API.
+
+        Returns:
+            The flagged KnowledgeUnit on success, None on transport error.
+
+        Raises:
+            RemoteError: If the remote API explicitly rejects the request.
+        """
         assert self._http is not None
         try:
             resp = self._http.post(
@@ -294,8 +345,17 @@ class Client:
                 json={"reason": reason.value},
             )
             resp.raise_for_status()
-        except httpx.HTTPError:
+            data = resp.json()
+            unit_data = data.get("knowledge_unit", data) if isinstance(data, dict) else data
+            return KnowledgeUnit.model_validate(unit_data)
+        except httpx.HTTPStatusError as exc:
+            raise RemoteError(
+                status_code=exc.response.status_code,
+                detail=exc.response.text,
+            ) from exc
+        except (httpx.HTTPError, ValueError, ValidationError):
             logger.debug("Remote flag failed", exc_info=True)
+            return None
 
 
 def _db_path_from_env() -> Path | None:
