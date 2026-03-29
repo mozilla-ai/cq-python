@@ -311,23 +311,30 @@ class Client:
             The confirmed KnowledgeUnit on success, None on transport error.
 
         Raises:
-            RemoteError: If the remote API explicitly rejects the request.
+            RemoteError: If the remote API explicitly rejects the request
+                or returns an unparseable response.
         """
         assert self._http is not None
         try:
             resp = self._http.post(f"/confirm/{unit_id}")
             resp.raise_for_status()
-            data = resp.json()
-            unit_data = data.get("knowledge_unit", data) if isinstance(data, dict) else data
-            return KnowledgeUnit.model_validate(unit_data)
         except httpx.HTTPStatusError as exc:
             raise RemoteError(
                 status_code=exc.response.status_code,
                 detail=exc.response.text,
             ) from exc
-        except (httpx.HTTPError, ValueError, ValidationError):
+        except httpx.HTTPError:
             logger.debug("Remote confirm failed", exc_info=True)
             return None
+        try:
+            data = resp.json()
+            unit_data = data.get("knowledge_unit", data) if isinstance(data, dict) else data
+            return KnowledgeUnit.model_validate(unit_data)
+        except (ValueError, ValidationError) as exc:
+            raise RemoteError(
+                status_code=resp.status_code,
+                detail=f"Invalid response body: {exc}",
+            ) from exc
 
     def _remote_flag(self, unit_id: str, reason: FlagReason) -> KnowledgeUnit | None:
         """Flag a unit on the remote API.
@@ -336,7 +343,8 @@ class Client:
             The flagged KnowledgeUnit on success, None on transport error.
 
         Raises:
-            RemoteError: If the remote API explicitly rejects the request.
+            RemoteError: If the remote API explicitly rejects the request
+                or returns an unparseable response.
         """
         assert self._http is not None
         try:
@@ -345,17 +353,23 @@ class Client:
                 json={"reason": reason.value},
             )
             resp.raise_for_status()
-            data = resp.json()
-            unit_data = data.get("knowledge_unit", data) if isinstance(data, dict) else data
-            return KnowledgeUnit.model_validate(unit_data)
         except httpx.HTTPStatusError as exc:
             raise RemoteError(
                 status_code=exc.response.status_code,
                 detail=exc.response.text,
             ) from exc
-        except (httpx.HTTPError, ValueError, ValidationError):
+        except httpx.HTTPError:
             logger.debug("Remote flag failed", exc_info=True)
             return None
+        try:
+            data = resp.json()
+            unit_data = data.get("knowledge_unit", data) if isinstance(data, dict) else data
+            return KnowledgeUnit.model_validate(unit_data)
+        except (ValueError, ValidationError) as exc:
+            raise RemoteError(
+                status_code=resp.status_code,
+                detail=f"Invalid response body: {exc}",
+            ) from exc
 
 
 def _db_path_from_env() -> Path | None:

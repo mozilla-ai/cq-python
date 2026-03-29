@@ -311,7 +311,11 @@ class TestRemoteIntegration:
             "evidence": {"confidence": 0.6, "confirmations": 2},
             "tier": "TIER_PRIVATE",
         }
-        httpx_mock.add_response(json={"knowledge_unit": confirmed_unit}, status_code=200)
+        httpx_mock.add_response(
+            url="http://test-remote/confirm/ku_remote123",
+            json={"knowledge_unit": confirmed_unit},
+            status_code=200,
+        )
 
         c = Client(addr="http://test-remote", local_db_path=tmp_path / "test.db")
         result = c.confirm("ku_remote123", tier=Tier.PRIVATE)
@@ -330,7 +334,11 @@ class TestRemoteIntegration:
             "flags": [{"reason": "FLAG_REASON_STALE"}],
             "tier": "TIER_PRIVATE",
         }
-        httpx_mock.add_response(json={"knowledge_unit": flagged_unit}, status_code=200)
+        httpx_mock.add_response(
+            url="http://test-remote/flag/ku_remote123",
+            json={"knowledge_unit": flagged_unit},
+            status_code=200,
+        )
 
         c = Client(addr="http://test-remote", local_db_path=tmp_path / "test.db")
         result = c.flag("ku_remote123", FlagReason.STALE, tier=Tier.PRIVATE)
