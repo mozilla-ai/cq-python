@@ -117,8 +117,8 @@ class Client:
         action: str,
         domains: list[str],
         *,
-        language: str | None = None,
-        framework: str | None = None,
+        languages: list[str] | None = None,
+        frameworks: list[str] | None = None,
         pattern: str = "",
         created_by: str = "",
     ) -> KnowledgeUnit:
@@ -129,8 +129,8 @@ class Client:
         if the remote explicitly rejects the unit.
         """
         context = Context(
-            languages=[language] if language else [],
-            frameworks=[framework] if framework else [],
+            languages=languages or [],
+            frameworks=frameworks or [],
             pattern=pattern,
         )
         unit = create_knowledge_unit(

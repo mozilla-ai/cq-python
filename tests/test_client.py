@@ -91,17 +91,29 @@ class TestLocalOnlyMode:
             )
             assert c.query(["testing"])[0].id == ku.id
 
-    def test_propose_with_language_and_framework(self, client: Client):
+    def test_propose_with_single_language_and_framework(self, client: Client):
         ku = client.propose(
             summary="Use Django ORM",
             detail="Better than raw SQL.",
             action="Use QuerySet API.",
             domains=["databases"],
-            language="python",
-            framework="django",
+            languages=["python"],
+            frameworks=["django"],
         )
         assert ku.context.languages == ["python"]
         assert ku.context.frameworks == ["django"]
+
+    def test_propose_with_multiple_languages_and_frameworks(self, client: Client):
+        ku = client.propose(
+            summary="Cross-language insight",
+            detail="Applies to both Python and Go.",
+            action="Check both implementations.",
+            domains=["api"],
+            languages=["python", "go"],
+            frameworks=["fastapi", "grpc"],
+        )
+        assert ku.context.languages == ["python", "go"]
+        assert ku.context.frameworks == ["fastapi", "grpc"]
 
     def test_confirm_non_local_without_remote_raises(self, client: Client):
         with pytest.raises(RuntimeError, match="remote API"):
@@ -117,14 +129,14 @@ class TestLocalOnlyMode:
             detail="Detail.",
             action="Action.",
             domains=["api"],
-            language="python",
+            languages=["python"],
         )
         client.propose(
             summary="Go insight",
             detail="Detail.",
             action="Action.",
             domains=["api"],
-            language="go",
+            languages=["go"],
         )
         results = client.query(["api"], language="python")
         assert len(results) == 2
@@ -138,7 +150,7 @@ class TestFullLifecycle:
             detail="Check error.code, not error.type.",
             action="Handle card_declined explicitly.",
             domains=["api", "stripe"],
-            language="python",
+            languages=["python"],
         )
 
         results = client.query(["api", "stripe"], language="python")
